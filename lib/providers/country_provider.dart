@@ -2,42 +2,46 @@
 
 import 'package:flutter/foundation.dart';
 import '../models/country.dart';
-import '../services/country_service.dart'; 
+// <<< CORRECT IMPORT >>>
+import '../services/country_data_fetcher.dart'; // Use the refactored service file name
 
 class CountryProvider with ChangeNotifier {
-  final CountryService _countryService = CountryService();
-  
-  List<Country> _data = []; 
-  bool _loading = false; 
-  String? _error; 
-  String _filterQuery = ''; 
+  // <<< CORRECT CLASS INSTANTIATION >>>
+  final CountryDataFetcher _dataFetcher = CountryDataFetcher(); // Use the refactored class name
 
-  final List<Country> _favorites = [];
+  // --- Internal State Variables (Renamed for fresh structure) ---
+  List<Country> _countryList = []; 
+  bool _isBusy = false; 
+  String? _errorMessage; 
+  String _searchFilter = ''; 
 
+  final List<Country> _favoriteItems = [];
+
+  // Initialize data fetching upon provider creation
   CountryProvider() {
-    _initData(notify: false); 
+    _loadDataOnStartup(notify: false); 
   }
 
-  // --- Accessors ---
+  // --- Accessors (Getters) ---
 
-  List<Country> get allCountries => _data;
-  bool get isDataLoading => _loading;
-  String? get currentError => _error;
-  bool get isQueryActive => _filterQuery.isNotEmpty;
+  List<Country> get allCountries => _countryList;
+  bool get isDataLoading => _isBusy;
+  String? get currentError => _errorMessage;
+  bool get isQueryActive => _searchFilter.isNotEmpty;
 
-  List<Country> get favoritesList => _favorites;
+  List<Country> get favoritesList => _favoriteItems;
 
   List<Country> get filteredCountries {
-    if (_filterQuery.isEmpty) {
-      return _data;
+    if (_searchFilter.isEmpty) {
+      return _countryList;
     }
 
-    final queryLower = _filterQuery.toLowerCase();
+    final query = _searchFilter.toLowerCase();
 
-    return _data.where((country) {
-      final nameMatch = country.name.toLowerCase().contains(queryLower);
-      
-      final capitalMatch = country.capital.toLowerCase().contains(queryLower);
+    // Filter logic remains the same (Name OR Capital match)
+    return _countryList.where((country) {
+      final nameMatch = country.name.toLowerCase().contains(query);
+      final capitalMatch = country.capital.toLowerCase().contains(query);
 
       return nameMatch || capitalMatch;
     }).toList();
@@ -46,11 +50,12 @@ class CountryProvider with ChangeNotifier {
   // --- Mutators & Actions ---
 
   bool checkIsFavorite(Country country) {
-    return _favorites.any((fav) => fav.name == country.name);
+    return _favoriteItems.any((fav) => fav.name == country.name);
   }
 
   void updateSearchQuery(String query) {
-    _filterQuery = query.trim();
+    _searchFilter = query.trim();
+    // Rebuild the UI to show filtered list
     notifyListeners(); 
   }
 
@@ -58,47 +63,55 @@ class CountryProvider with ChangeNotifier {
     final exists = checkIsFavorite(country);
 
     if (exists) {
-      _favorites.removeWhere((fav) => fav.name == country.name);
+      _favoriteItems.removeWhere((fav) => fav.name == country.name);
     } else {
-      _favorites.add(country);
+      _favoriteItems.add(country);
     }
 
+    // Rebuild the UI (favorites list and list item icons)
     notifyListeners();
   }
 
   void sortDataByName() {
-    _data.sort((a, b) {
+    // Sort the master list A-Z
+    _countryList.sort((a, b) {
       final nameA = a.name.toLowerCase();
       final nameB = b.name.toLowerCase();
       return nameA.compareTo(nameB);
     });
 
+    // Rebuild the UI with the sorted list
     notifyListeners(); 
   }
 
-  Future<void> _initData({bool notify = true}) async {
+  // --- Data Fetching Logic ---
+
+  Future<void> _loadDataOnStartup({bool notify = true}) async {
     if (notify) {
-      _loading = true;
-      _error = null; 
+      _isBusy = true;
+      _errorMessage = null; 
       notifyListeners();
     }
 
     try {
-      final freshData = await _countryService.fetchCountries();
-      _data = freshData;
-      _error = null; 
-      _filterQuery = '';
+      // <<< CORRECT METHOD CALL >>>
+      final fetchedData = await _dataFetcher.retrieveAllCountries(); 
+      
+      _countryList = fetchedData;
+      _errorMessage = null; 
+      _searchFilter = '';
     } catch (e) {
-      _error = e.toString().replaceFirst('Exception: ', '');
+      _errorMessage = e.toString().replaceFirst('Exception: ', '');
       if (kDebugMode) {
-        print('Data fetch failed: $_error');
+        print('Data fetch failed: $_errorMessage');
       }
-      _data = [];
+      _countryList = [];
     } finally {
-      _loading = false;
+      _isBusy = false;
       notifyListeners();
     }
   }
 
-  Future<void> refreshData() => _initData();
+  // Public method for manual refresh (e.g., Pull-to-Refresh)
+  Future<void> refreshData() => _loadDataOnStartup();
 }
